@@ -102,66 +102,68 @@ class Boundary(object):
 
 
 class Trajectory(object):
-    """ Generate a 2-D (x, y) trajectory using the heuristics """
+    """ Generate a 2-D (x, y) trajectory that follows a randomly placed square path with a smooth traversal. """
 
-    def __init__(self, workspace_limits: np.ndarray, num_points=2000, seed=1024):
+    def __init__(self, workspace_limits: np.ndarray, steps_between_corners=250, seed=1024):
         self.workspace_limits = workspace_limits.copy()
+        self.steps_between_corners = steps_between_corners
         self._seed = seed
         self.xi, self.yi = None, None
-        self.pts = None
         self._step = 0
-        self.generate_trajectory(num_points)
+        self.generate_trajectory()
 
-    def generate_trajectory(self, num_points):
-        """ Generate a trajectory using sampled waypoints in four blocks and B-spline interpolation. """
+    def generate_trajectory(self):
+        """ Generate a smooth trajectory that follows a randomly placed square path. """
         st0 = np.random.get_state()
         if self.xi is None and self.yi is None:
-            # using the seed to generate a specific trajectory
+            # Using the seed to generate a specific trajectory
             np.random.seed(self._seed)
 
-        # Divide the work space into four blocks
-        boundary_x = np.random.uniform(self.workspace_limits[0, :].mean() - 0.1 * self.workspace_limits[0, :].ptp(),
-                                       self.workspace_limits[0, :].mean() + 0.1 * self.workspace_limits[0, :].ptp())
-        boundary_y = np.random.uniform(self.workspace_limits[1, :].mean() - 0.1 * self.workspace_limits[1, :].ptp(),
-                                       self.workspace_limits[1, :].mean() + 0.1 * self.workspace_limits[1, :].ptp())
-        # upper left
-        pts_ul = np.random.uniform(low=(self.workspace_limits[0, 0], boundary_y),
-                                   high=(boundary_x, self.workspace_limits[1, 1]),
-                                   size=(3, 2))
-        pts_ul = pts_ul[pts_ul[:, 1].argsort()[::-1]]  # by y, descend
-        # bottom left
-        pts_bl = np.random.uniform(low=(self.workspace_limits[0, 0], self.workspace_limits[1, 0]),
-                                   high=(boundary_x, boundary_y),
-                                   size=(3, 2))
-        pts_bl = pts_bl[pts_bl[:, 1].argsort()[::-1]]  # by y, descend
-        # bottom right
-        pts_br = np.random.uniform(low=(boundary_x, self.workspace_limits[1, 0]),
-                                   high=(self.workspace_limits[0, 1], boundary_y),
-                                   size=(3, 2))
-        pts_br = pts_br[pts_br[:, 0].argsort()]  # by x, ascend
-        # upper left
-        pts_ur = np.random.uniform(low=(boundary_x, boundary_y),
-                                   high=(self.workspace_limits[0, 1], self.workspace_limits[1, 1]),
-                                   size=(3, 2))
-        pts_ur = pts_ur[pts_ur[:, 0].argsort()[::-1]]  # by x, ascend
-        pts = np.concatenate([pts_ul, pts_bl, pts_br, pts_ur, pts_ul[0].reshape((1, 2))], axis=0)
-        self.pts = pts
+        # Randomly place the square path within the workspace limits
+        x_min, x_max = self.workspace_limits[0]
+        y_min, y_max = self.workspace_limits[1]
+        side_length = min(x_max - x_min, y_max - y_min) * 0.5  # Adjust the side length as needed
+        x_center = np.random.uniform(x_min + side_length / 2, x_max - side_length / 2)
+        y_center = np.random.uniform(y_min + side_length / 2, y_max - side_length / 2)
 
-        # interpolate the smooth curve using B-spline
-        tck, u = interpolate.splprep(x=[pts[:, 0], pts[:, 1]], s=0, per=True)
-        # evaluate the spline fits for 1000 evenly spaced distance values
-        xi, yi = interpolate.splev(np.linspace(0, 1, num_points), tck)
+        # Define the four corners of the square
+        corners = [
+            [x_center - side_length / 2, y_center - side_length / 2],
+            [x_center - side_length / 2, y_center + side_length / 2],
+            [x_center + side_length / 2, y_center + side_length / 2],
+            [x_center + side_length / 2, y_center - side_length / 2]
+        ]
+
+        # Generate a smooth path by evenly distributing the steps between each corner
+        num_points = self.steps_between_corners * 4  # Adjust the number of points for a smoother curve
+        xi, yi = [], []
+
+        for i in range(4):
+            curr_corner = corners[i]
+            next_corner = corners[(i + 1) % 4]
+
+            for j in range(self.steps_between_corners):
+                t = j / float(self.steps_between_corners)
+                x = (1 - t) * curr_corner[0] + t * next_corner[0]
+                y = (1 - t) * curr_corner[1] + t * next_corner[1]
+                xi.append(x)
+                yi.append(y)
+
+        self.xi, self.yi = xi, yi
 
         if self.xi is None and self.yi is None:
-            # restore the numpy state
+            # Restore the numpy state
             np.random.set_state(st0)
-        self.xi, self.yi = xi, yi
-        self._step = np.random.randint(len(self.xi))
 
     def step(self) -> list:
-        """ Return the next (x, y) position. """
+        """ Return the next (x, y) position and move to the next corner after a specified number of steps. """
         self._step = (self._step + 1) % len(self.xi)
-        return [self.xi[self._step], self.yi[self._step]]
+        x, y = self.xi[self._step], self.yi[self._step]
+
+        return [x, y]
+
+    # Rest of the class methods remain unchanged...
+
 
     def get_step(self) -> int:
         return self._step

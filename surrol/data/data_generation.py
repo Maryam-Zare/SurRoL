@@ -23,6 +23,8 @@ args = parser.parse_args()
 actions = []
 observations = []
 infos = []
+dones = []
+rewards = []
 
 images = []  # record video
 masks = []
@@ -41,7 +43,7 @@ def main():
         args.steps = env._max_episode_steps
 
     print()
-    while len(actions) < num_itr:
+    while len(actions) < 3:
         obs = env.reset()
         print("ITERATION NUMBER ", len(actions))
         goToGoal(env, obs)
@@ -56,8 +58,18 @@ def main():
     folder = 'demo' if not args.video else 'video'
     folder = os.path.join(ROOT_DIR_PATH, 'data', folder)
 
-    np.savez_compressed(os.path.join(folder, file_name),
-                        acs=actions, obs=observations, info=infos)  # save the file
+    dataset = {'observations' : np.array(observations), 'actions': np.array(actions),
+    'rewards': np.array(rewards),
+    'dones': np.array(dones), 'infos': np.array(infos)}
+               
+    
+
+# check the directory does not exist
+    if not(os.path.exists(folder)):
+    # create the directory you want to save to
+        os.mkdir(folder)
+    
+    np.savez_compressed(os.path.join(folder, file_name), **dataset)  # save the file
 
     if args.video:
         video_name = "video_"
@@ -84,6 +96,8 @@ def goToGoal(env, last_obs):
     episode_acs = []
     episode_obs = []
     episode_info = []
+    episode_dones = []
+    episode_rewards = []
 
     time_step = 0  # count the total number of time steps
     episode_init_time = time.time()
@@ -110,12 +124,18 @@ def goToGoal(env, last_obs):
         episode_acs.append(action)
         episode_info.append(info)
         episode_obs.append(obs)
+        episode_dones.append(done)
+        episode_rewards.append(reward)
+        
     print("Episode time used: {:.2f}s\n".format(time.time() - episode_init_time))
 
-    if success:
-        actions.append(episode_acs)
-        observations.append(episode_obs)
-        infos.append(episode_info)
+    #if success:
+    actions.append(episode_acs)
+    observations.append(episode_obs)
+    infos.append(episode_info)
+    dones.append(episode_dones)
+    rewards.append(episode_rewards)
+        
 
 
 if __name__ == "__main__":
