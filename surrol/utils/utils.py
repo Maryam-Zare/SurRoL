@@ -101,7 +101,7 @@ class Boundary(object):
         self._contained_objects = []
 
 
-class Trajectory(object):
+class Trajectory1(object):
     """ Generate a 2-D (x, y) trajectory that follows a randomly placed square path with a smooth traversal. """
 
     def __init__(self, workspace_limits: np.ndarray, steps_between_corners=250, seed=1024):
@@ -178,6 +178,80 @@ class Trajectory(object):
     def seed(self, seed: int):
         self._seed = seed
 
+class Trajectory(object):
+    """ Generate a 2-D (x, y) trajectory using the heuristics """
+
+    def __init__(self, workspace_limits: np.ndarray, num_points=2000, seed=1024):
+        self.workspace_limits = workspace_limits.copy()
+        self._seed = seed
+        self.xi, self.yi = None, None
+        self.pts = None
+        self._step = 0
+        self.generate_trajectory(num_points)
+
+    def generate_trajectory(self, num_points):
+        """ Generate a trajectory using sampled waypoints in four blocks and B-spline interpolation. """
+        st0 = np.random.get_state()
+        if self.xi is None and self.yi is None:
+            # using the seed to generate a specific trajectory
+            np.random.seed(self._seed)
+
+        # Divide the work space into four blocks
+        boundary_x = np.random.uniform(self.workspace_limits[0, :].mean() - 0.1 * self.workspace_limits[0, :].ptp(),
+                                       self.workspace_limits[0, :].mean() + 0.1 * self.workspace_limits[0, :].ptp())
+        boundary_y = np.random.uniform(self.workspace_limits[1, :].mean() - 0.1 * self.workspace_limits[1, :].ptp(),
+                                       self.workspace_limits[1, :].mean() + 0.1 * self.workspace_limits[1, :].ptp())
+        # upper left
+        pts_ul = np.random.uniform(low=(self.workspace_limits[0, 0], boundary_y),
+                                   high=(boundary_x, self.workspace_limits[1, 1]),
+                                   size=(3, 2))
+        pts_ul = pts_ul[pts_ul[:, 1].argsort()[::-1]]  # by y, descend
+        # bottom left
+        pts_bl = np.random.uniform(low=(self.workspace_limits[0, 0], self.workspace_limits[1, 0]),
+                                   high=(boundary_x, boundary_y),
+                                   size=(3, 2))
+        pts_bl = pts_bl[pts_bl[:, 1].argsort()[::-1]]  # by y, descend
+        # bottom right
+        pts_br = np.random.uniform(low=(boundary_x, self.workspace_limits[1, 0]),
+                                   high=(self.workspace_limits[0, 1], boundary_y),
+                                   size=(3, 2))
+        pts_br = pts_br[pts_br[:, 0].argsort()]  # by x, ascend
+        # upper left
+        pts_ur = np.random.uniform(low=(boundary_x, boundary_y),
+                                   high=(self.workspace_limits[0, 1], self.workspace_limits[1, 1]),
+                                   size=(3, 2))
+        pts_ur = pts_ur[pts_ur[:, 0].argsort()[::-1]]  # by x, ascend
+        pts = np.concatenate([pts_ul, pts_bl, pts_br, pts_ur, pts_ul[0].reshape((1, 2))], axis=0)
+        self.pts = pts
+
+        # interpolate the smooth curve using B-spline
+        tck, u = interpolate.splprep(x=[pts[:, 0], pts[:, 1]], s=0, per=True)
+        # evaluate the spline fits for 1000 evenly spaced distance values
+        xi, yi = interpolate.splev(np.linspace(0, 1, num_points), tck)
+
+        if self.xi is None and self.yi is None:
+            # restore the numpy state
+            np.random.set_state(st0)
+        self.xi, self.yi = xi, yi
+        self._step = np.random.randint(len(self.xi))
+
+    def step(self) -> list:
+        """ Return the next (x, y) position. """
+        self._step = (self._step + 1) % len(self.xi)
+        return [self.xi[self._step], self.yi[self._step]]
+
+    def get_step(self) -> int:
+        return self._step
+
+    def set_step(self, step: int):
+        self._step = step
+
+    def reset(self):
+        """ Reset the _step to be the origin. """
+        self._step = 0
+
+    def seed(self, seed: int):
+        self._seed = seed
 
 def get_centroid(mask: np.ndarray, target: int) -> Tuple[bool, np.ndarray]:
     """

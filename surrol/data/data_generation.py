@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 actions = []
 observations = []
-infos = []
+truncated = []
 dones = []
 rewards = []
 
@@ -32,9 +32,9 @@ masks = []
 
 def main():
     env = gym.make(args.env, render_mode='human')  # 'human'
-    num_itr = 100 if not args.video else 1
+    num_itr = 150 if not args.video else 1
     cnt = 0
-    init_state_space = 'random'
+    init_state_space = 'square'
     env.reset()
     print("Reset!")
     init_time = time.time()
@@ -43,24 +43,27 @@ def main():
         args.steps = env._max_episode_steps
 
     print()
-    while len(actions) < 3:
+    #while len(actions) < num_itr:
+    while cnt < num_itr:
         obs = env.reset()
-        print("ITERATION NUMBER ", len(actions))
+        print("ITERATION NUMBER ", cnt)
         goToGoal(env, obs)
         cnt += 1
 
     file_name = "data_"
     file_name += args.env
     file_name += "_" + init_state_space
-    file_name += "_" + str(num_itr)
+    file_name += "_" + str(cnt)
     file_name += ".npz"
 
     folder = 'demo' if not args.video else 'video'
     folder = os.path.join(ROOT_DIR_PATH, 'data', folder)
+    
 
-    dataset = {'observations' : np.array(observations), 'actions': np.array(actions),
-    'rewards': np.array(rewards),
-    'dones': np.array(dones), 'infos': np.array(infos)}
+    dataset = {'observations' : observations, 'actions': actions,
+    'rewards':rewards,
+    'dones':dones}
+    
                
     
 
@@ -114,27 +117,25 @@ def goToGoal(env, last_obs):
             # masks.append(mask)
 
         obs, reward, done, info = env.step(action)
-        # print(f" -> obs: {obs}, reward: {reward}, done: {done}, info: {info}.")
+        #print(f" -> obs: {obs}, reward: {reward}, done: {done}, info: {info}.")
         time_step += 1
 
         if isinstance(obs, dict) and info['is_success'] > 0 and not success:
             print("Timesteps to finish:", time_step)
             success = True
 
-        episode_acs.append(action)
-        episode_info.append(info)
-        episode_obs.append(obs)
-        episode_dones.append(done)
-        episode_rewards.append(reward)
+        actions.append(action)
+        observations.append(obs)
+        dones.append(done)
+        rewards.append(reward)
         
-    print("Episode time used: {:.2f}s\n".format(time.time() - episode_init_time))
+    print("Episode time used: {:.2f}s\n".format(time.time() - episode_init_time), time_step)
 
     #if success:
-    actions.append(episode_acs)
-    observations.append(episode_obs)
-    infos.append(episode_info)
-    dones.append(episode_dones)
-    rewards.append(episode_rewards)
+    #actions.append(episode_acs)
+    #observations.append(episode_obs)
+    #dones.append(episode_dones)
+    #rewards.append(episode_rewards)
         
 
 
